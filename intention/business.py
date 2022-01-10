@@ -92,6 +92,60 @@ class Intention(object):
                 outline = clean(row["custom"]) + "\t__label__" + str(int(row["is_business"])) + "\n"
                 f.write(outline)
 
+    def train(self, model_data_file, model_test_file):
+        """
+        读取训练集  训练模型  并保存
+        :param model_data_file: 训练数据位置
+        :param model_test_file: 测试数据位置
+        :return: fasttext model
+        """
+        logging.info("Train classifier")
+        classifier = fasttext.train_supervised(model_data_file,
+                                               label="__label",
+                                               dim=100,
+                                               epoch=5,
+                                               lr=0.1,
+                                               wordNgrams=2,
+                                               loss="softmax",
+                                               thread=5,
+                                               verbose=True)
+        self.test(classifier, model_test_file)
+        classifier.save_model(self.model_path)
+        logging.info("Model saved")
+        return classifier
+
+    def test(self, classifier, model_test_file):
+        """
+        验证模型
+        :param classifier: model
+        :param model_test_file: 测试数据路径
+        :return:
+        """
+        logging.info("Testing trained model.")
+        test = pd.read_csv(os.path.join(root_path, "data/test.csv")).fillna("")
+        test["is_business"] = test["custom"].progress_apply(
+            lambda x: 1 if any(kw in x for kw in self.kw) else 0
+        )
+
+        with open(model_test_file, "w") as f:
+            for index, row in tqdm(test.iterrows(), total=test.shape[0]):
+                outline = clean(row['custom']) + "\t__label__" + str(
+                    int(row['is_business'])) + "\n"
+                f.write(outline)
+        result = classifier.test(model_test_file)
+        # F1 score
+        print(result[1] * result[2] * 2 / (result[1] + result[2]))
+
+    def predict(self, text):
+        """
+        预测
+        :param text: 文本
+        :return:
+        """
+        logging.info("Predicting.")
+        label, score = self.fast.predict(clean(filter_content(text)))
+        return label[0]
+
 
 if __name__ == "__main__":
     it = Intention(config.train_path,
